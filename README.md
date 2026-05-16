@@ -7,9 +7,7 @@ A full-stack team collaboration tool with role-based access control, Kanban boar
 - **Backend API:** https://backend-production-e5dc6.up.railway.app
 - **GitHub:** https://github.com/90sumit99/team-task-manager
 
-## 📹 Demo Video
-[Link to 2–5 minute demo video]
-
+*Note: Global Admins now have full cross-project visibility in the dashboard.*
 
 ## 🧰 Tech Stack
 
