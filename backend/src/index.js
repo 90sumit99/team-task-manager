@@ -16,9 +16,16 @@ const app = express();
 // Security middleware
 app.use(helmet());
 
-// CORS — allow frontend domain
+// CORS — allow frontend domain (production + local dev)
+const corsOrigins = [
+  'https://frontend-production-45e2.up.railway.app', // production frontend
+  process.env.FRONTEND_URL,                           // env override
+  'http://localhost:5173',                            // local dev
+  'http://localhost:3000',                            // local serve
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || '*',
+  origin: corsOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
