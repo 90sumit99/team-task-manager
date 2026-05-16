@@ -174,21 +174,40 @@ const getDashboardStats = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const now = new Date();
+    const isGlobalAdmin = req.user.role === 'ADMIN';
 
-    // Check if user is an admin of ANY project
-    const isProjectAdmin = await prisma.projectMember.findFirst({
+    // Find projects where user is an admin
+    const adminProjects = await prisma.projectMember.findMany({
       where: { userId, role: 'ADMIN' },
+      select: { projectId: true },
     });
+    const adminProjectIds = adminProjects.map(p => p.projectId);
+    const isProjectAdmin = adminProjectIds.length > 0;
+
+    // Define the base filter for tasks shown in the top cards
+    let taskFilter = { assigneeId: userId }; // Default: only their own tasks
+    
+    if (isGlobalAdmin) {
+      taskFilter = {}; // Global admin sees all tasks
+    } else if (isProjectAdmin) {
+      // Project admin sees tasks in their projects AND their own tasks
+      taskFilter = {
+        OR: [
+          { assigneeId: userId },
+          { projectId: { in: adminProjectIds } }
+        ]
+      };
+    }
 
     const [assignedTasks, statusCounts, overdueTasks, recentTasks] = await Promise.all([
-      prisma.task.count({ where: { assigneeId: userId } }),
+      prisma.task.count({ where: taskFilter }),
       prisma.task.groupBy({
         by: ['status'],
-        where: { assigneeId: userId },
+        where: taskFilter,
         _count: { status: true },
       }),
       prisma.task.findMany({
-        where: { assigneeId: userId, dueDate: { lt: now }, status: { not: 'DONE' } },
+        where: { ...taskFilter, dueDate: { lt: now }, status: { not: 'DONE' } },
         include: {
           project: { select: { id: true, name: true } },
           assignee: { select: { id: true, name: true, email: true } },
@@ -196,7 +215,7 @@ const getDashboardStats = async (req, res, next) => {
         orderBy: { dueDate: 'asc' },
       }),
       prisma.task.findMany({
-        where: { assigneeId: userId },
+        where: taskFilter,
         include: {
           project: { select: { id: true, name: true } },
           assignee: { select: { id: true, name: true, email: true } },
@@ -211,51 +230,54 @@ const getDashboardStats = async (req, res, next) => {
       statusMap[status] = _count.status;
     });
 
-    // tasksByUser: only for project admins — show member stats across their admin projects
+    // tasksByUser: only for project admins and global admins — show member stats
     let tasksByUser = [];
-    if (isProjectAdmin || req.user.role === 'ADMIN') {
-      // Find all projects where user is admin
-      const adminProjects = await prisma.projectMember.findMany({
-        where: { userId, role: 'ADMIN' },
-        select: { projectId: true },
-      });
-      const adminProjectIds = adminProjects.map(p => p.projectId);
+    if (isGlobalAdmin || isProjectAdmin) {
+      let memberFilter = {}; // Global admin gets all members of any project
+      let taskScopeFilter = {}; // Global admin tracks across all projects
 
-      if (adminProjectIds.length > 0) {
-        // Get all members of those projects with their task counts
-        const members = await prisma.projectMember.findMany({
-          where: { projectId: { in: adminProjectIds } },
-          include: {
-            user: { select: { id: true, name: true, email: true } },
-          },
-        });
-
-        // Deduplicate by userId
-        const uniqueMembers = Array.from(
-          members.reduce((map, m) => {
-            if (!map.has(m.userId)) map.set(m.userId, m);
-            return map;
-          }, new Map()).values()
-        );
-
-        tasksByUser = await Promise.all(
-          uniqueMembers.map(async (m) => {
-            const [total, completed, overdue] = await Promise.all([
-              prisma.task.count({ where: { assigneeId: m.userId, projectId: { in: adminProjectIds } } }),
-              prisma.task.count({ where: { assigneeId: m.userId, projectId: { in: adminProjectIds }, status: 'DONE' } }),
-              prisma.task.count({ where: { assigneeId: m.userId, projectId: { in: adminProjectIds }, status: { not: 'DONE' }, dueDate: { lt: now } } }),
-            ]);
-            return {
-              userId: m.userId,
-              name: m.user.name,
-              email: m.user.email,
-              totalTasks: total,
-              completed,
-              overdue,
-            };
-          })
-        );
+      if (!isGlobalAdmin && isProjectAdmin) {
+        memberFilter = { projectId: { in: adminProjectIds } };
+        taskScopeFilter = { projectId: { in: adminProjectIds } };
       }
+
+      // Get members based on scope
+      const members = await prisma.projectMember.findMany({
+        where: memberFilter,
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      // Deduplicate by userId
+      const uniqueMembers = Array.from(
+        members.reduce((map, m) => {
+          if (!map.has(m.userId)) map.set(m.userId, m);
+          return map;
+        }, new Map()).values()
+      );
+
+      tasksByUser = await Promise.all(
+        uniqueMembers.map(async (m) => {
+          const mFilter = { assigneeId: m.userId, ...taskScopeFilter };
+          const [total, completed, overdue] = await Promise.all([
+            prisma.task.count({ where: mFilter }),
+            prisma.task.count({ where: { ...mFilter, status: 'DONE' } }),
+            prisma.task.count({ where: { ...mFilter, status: { not: 'DONE' }, dueDate: { lt: now } } }),
+          ]);
+          return {
+            userId: m.userId,
+            name: m.user.name,
+            email: m.user.email,
+            totalTasks: total,
+            completed,
+            overdue,
+          };
+        })
+      );
+      
+      // Sort tasksByUser by total tasks descending
+      tasksByUser.sort((a, b) => b.totalTasks - a.totalTasks);
     }
 
     res.json({
