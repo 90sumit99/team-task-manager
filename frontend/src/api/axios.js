@@ -1,8 +1,10 @@
 import axios from 'axios';
 
-// Vite replaces import.meta.env.VITE_API_URL at build time.
-// Fallback is the production Railway URL (safe to commit — public domain).
-const API_URL = import.meta.env.VITE_API_URL || 'https://backend-production-e5dc6.up.railway.app';
+// __API_BASE_URL__ is injected by Vite's define at build time (see vite.config.js)
+// Fallback chain: define → env var → hardcoded production URL
+const API_URL = (typeof __API_BASE_URL__ !== 'undefined' ? __API_BASE_URL__ : null)
+  || import.meta.env.VITE_API_URL
+  || 'https://backend-production-e5dc6.up.railway.app';
 
 const api = axios.create({
   baseURL: `${API_URL}/api`,
