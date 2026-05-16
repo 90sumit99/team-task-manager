@@ -2,11 +2,14 @@
 
 A full-stack team collaboration tool with role-based access control, Kanban boards, and real-time dashboard analytics.
 
-## 🔗 Live URL
-https://[your-app].railway.app
+## 🔗 Live URLs
+- **Frontend:** https://frontend-production-45e2.up.railway.app
+- **Backend API:** https://backend-production-e5dc6.up.railway.app
+- **GitHub:** https://github.com/90sumit99/team-task-manager
 
 ## 📹 Demo Video
 [Link to 2–5 minute demo video]
+
 
 ## 🧰 Tech Stack
 
