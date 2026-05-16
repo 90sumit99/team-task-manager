@@ -3,7 +3,7 @@
 backend/.env
 frontend/.env
 *.env.local
-.env.production
+# Note: frontend/.env.production is safe to commit (public URL only, no secrets)
 
 # Dependencies
 node_modules/
